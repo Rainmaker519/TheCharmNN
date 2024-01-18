@@ -9,9 +9,6 @@ enum ActivationType {
 
 type PreActivationValue = (f64,ActivationType);
 
-type Node<const NextLayerSize: usize, const PrevLayerSize: usize> =
-    (PreActivationValue, [bool; NextLayerSize], [bool; PrevLayerSize]);
-
 trait PAVForwardPass {
     fn activate(&self) -> Option<(f64,f64)>;
 }
@@ -30,18 +27,21 @@ impl PAVForwardPass for PreActivationValue {
     }
 }
 
+type Node<const NextLayerSize: usize, const PrevLayerSize: usize> =
+    (PreActivationValue, [bool; NextLayerSize], [bool; PrevLayerSize]);
+
 trait NodeForwardPass {
-    fn get_nv_pairs<const NF: usize, const NP: usize>(&self) -> Vec<(usize,f64)>;
+    fn get_nv_pairs<const NF: usize, const NP: usize>(&self) -> Vec<(usize,(f64,f64))>;
 }
 impl<const NF: usize, const NP: usize> NodeForwardPass for Node<NF,NP> {
-    fn get_nv_pairs<const InnerNF: usize, const InnerNP: usize>(&self)  -> Vec<(usize,f64)> {
-        let mut result: Vec<(usize,f64)> = vec![];
+    fn get_nv_pairs<const InnerNF: usize, const InnerNP: usize>(&self)  -> Vec<(usize,(f64,f64))> {
+        let mut result: Vec<(usize,(f64,f64))> = vec![];
         for i in 0..NF {
             if self.1[i].clone() {
                 let post_act_val = &self.0.activate();
                 match post_act_val {
                     None => {},
-                    Some(x) => {result.push((i,x.0))},
+                    Some(x) => {result.push((i,*x))},
                 }
             }
         }
@@ -57,7 +57,13 @@ fn main() {
 
     const P: usize = 1;
 
-    dbg!("{:?}",n1.get_nv_pairs::<P,3>());
+    let nv_pairs = n1.get_nv_pairs::<P,3>();
+
+    for i in nv_pairs.iter() {
+        dbg!(i.0, i.1.0, i.1.1);
+        println!();
+    }
+
     println!("Hi test commit!");
 }
 
