@@ -27,17 +27,17 @@ impl PAVForwardPass for PreActivationValue {
     }
 }
 
-type Node<const NextLayerSize: usize, const PrevLayerSize: usize> =
-    (PreActivationValue, [bool; NextLayerSize], [bool; PrevLayerSize]);
+type Node = (PreActivationValue, Vec<Weight>, Vec<Weight>, usize, usize); // last 2 next and prev layer sizes
 
 trait NodeForwardPass {
-    fn get_nv_pairs<const NF: usize, const NP: usize>(&self) -> Vec<(usize,(f64,f64))>;
+    fn get_nv_pairs(&self) -> Vec<(usize,(f64,f64))>;
+    fn set_preactivation_value(&mut self, v: f64, t: ActivationType);
 }
-impl<const NF: usize, const NP: usize> NodeForwardPass for Node<NF,NP> {
-    fn get_nv_pairs<const InnerNF: usize, const InnerNP: usize>(&self)  -> Vec<(usize,(f64,f64))> {
+impl NodeForwardPass for Node {
+    fn get_nv_pairs(&self)  -> Vec<(usize,(f64,f64))> {
         let mut result: Vec<(usize,(f64,f64))> = vec![];
-        for i in 0..NF {
-            if self.1[i].clone() {
+        for i in 0..self.3 { // size of next layer
+            if self.1[i].is_some() {
                 let post_act_val = &self.0.activate();
                 match post_act_val {
                     None => {},
@@ -47,17 +47,50 @@ impl<const NF: usize, const NP: usize> NodeForwardPass for Node<NF,NP> {
         }
         result
     }
+    fn set_preactivation_value(&mut self, v: f64, t: ActivationType) {
+        self.0.0 = v;
+        self.0.1 = t;
+    }
 }
+
+type Layer = (Vec<Node>, usize);
+trait MakeLayer {
+    fn make(v: Vec<Node>) -> Layer;
+}
+impl MakeLayer for Layer {
+    fn make(v: Vec<Node>) -> Layer {
+        let l = *&v.len().clone();
+        (v, l)
+    }
+}
+
+type Weight = Option<f64>;
+
+trait MakeWeight {
+    fn make(v: f64) -> Weight;
+}
+impl MakeWeight for Weight {
+    fn make(v: f64) -> Weight {
+        if v > 0f64 {
+            return Option::Some(v);
+        }
+        Option::None
+    }
+}
+
+type Network = (Vec<Layer>,Vec<usize>);
 
 
 fn main() {
     let v1: PreActivationValue = (0.0443, ActivationType::Sigmoid);
 
-    let n1: Node<3,3> = (v1, [true, false, true], [false, true, true]);
+    let n1: Node = (v1,
+         vec![Weight::make(0.12), Weight::make(0.16), Weight::make(0f64)],
+         vec![Weight::make(0f64), Weight::make(0.0334), Weight::make(0.432)],
+        3, 3,
+    );
 
-    const P: usize = 1;
-
-    let nv_pairs = n1.get_nv_pairs::<P,3>();
+    let nv_pairs = n1.get_nv_pairs();
 
     for i in nv_pairs.iter() {
         dbg!(i.0, i.1.0, i.1.1);
