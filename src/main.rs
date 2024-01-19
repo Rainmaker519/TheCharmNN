@@ -1,5 +1,6 @@
 use std::f64::consts;
 use std::fs;
+use std::str::FromStr;
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 enum ActivationType {
@@ -122,57 +123,83 @@ impl NetworkBuild for Network {
     }
 }
 
-
-fn main() {
-    let v1: PreActivationValue = (0.0443, ActivationType::Sigmoid);
-
-    let n1: Node = (v1,
-         vec![Weight::make(0.12), Weight::make(0.16), Weight::make(0f64)],
-         vec![Weight::make(0f64), Weight::make(0.0334), Weight::make(0.432)],
-        3, 3, 1.3
-    );
-
-    let nv_pairs = n1.get_nv_pairs();
-
-    for i in nv_pairs.iter() {
-        dbg!(i.0, i.1.0, i.1.1);
-        println!();
-    }
-
-    //let file: &str = "test_network.txt";
-    //let file = fs::read_to_string(file);
-
-    let layer_sizes: Vec<usize> = vec![4,2,4,5];//read from file when fr
-
-    let mut layers = Network::start_network(layer_sizes[0]);
-
-    let mut w_chunks = vec![
-        vec![Weight::make(0.2), Weight::make(0.4)],
-        vec![Weight::make(0.3), Weight::make(0.3)],
-        vec![Weight::make(0.2), Weight::make(0.4)],
-        vec![Weight::make(0.3), Weight::make(0.3)],
-    ];
-    let mut bias_chunk = vec![1.2,-0.83];
-    let l_chunk: (Vec<Vec<Weight>>,Vec<f64>) = (w_chunks,bias_chunk);
-
-    let mut w_chunks1 = vec![
-        vec![Weight::make(0.2), Weight::make(0.4),Weight::make(0.3), Weight::make(0.3)],
-        vec![Weight::make(0.3), Weight::make(0.3),Weight::make(0.2), Weight::make(0.4)],
-    ];
-    let mut bias_chunk1 = vec![1.2,-0.83,1.2,-0.83];
-    let l_chunk1: (Vec<Vec<Weight>>,Vec<f64>) = (w_chunks1,bias_chunk1);
-
-    layers.add_layer((l_chunk,l_chunk1));
-    dbg!(&layers.0[1].0[0]);
-
+fn build_network_from_txt_file(txt_file_name: &str) -> Network {
+    let file = fs::read_to_string(txt_file_name);
     //add_layer takes two l_chunks
     //an l_chunk represents the weights from the prev layers nodes, the first ind being the node in the prev layer
     //  and the second ind being the node in this layer/
     //in addition an l_chunk has the bias of the layer, the first of the two passed will be used for
     //  the layer being added to the network
 
+    let mut layer_sizes: Vec<usize> = vec![];
+    let mut w_block_holder: Vec<Vec<Vec<Weight>>> = vec![];
+    let mut b_block_holder: Vec<Vec<f64>> = vec![];
+    let mut w_block_builder: Vec<Vec<Weight>> = vec![];
+    let mut b_block_builder: Vec<f64> = vec![];
 
-    println!("Hi test commit!");
+    for l in file.unwrap().lines() {
+        if l.starts_with("#") {
+            continue
+        }
+        if l.starts_with("[l_sizes]") {
+            let sizes = l.strip_prefix("[l_sizes]").unwrap();
+            let sizes = sizes.strip_suffix("[\\l_sizes]").unwrap();
+            let sizes = sizes.split(",").collect::<Vec<&str>>();
+            for e in sizes.iter() {
+                layer_sizes.push(usize::from_str(e).unwrap());
+            }
+            continue
+        }
+        if l.starts_with("[w]") {
+            w_block_builder = vec![];
+            b_block_builder = vec![];
+            let weight_chunks = l.strip_prefix("[w]").unwrap();
+            let weight_chunks = weight_chunks.strip_suffix("[\\w]").unwrap();
+            let weight_chunks = weight_chunks.split("|").collect::<Vec<&str>>();
+            for e in weight_chunks {
+                let inner_split = e.split(",").collect::<Vec<&str>>();
+                let mut w_block_loop: Vec<Weight> = vec![];
+                for w in inner_split {
+                    w_block_loop.push(Option::Some(w.parse::<f64>().unwrap()));
+                }
+                w_block_builder.push(w_block_loop);
+            }
+            w_block_holder.push(w_block_builder);
+        }
+        if l.starts_with("[b]") {
+            b_block_builder = vec![];
+            let biases = l.strip_prefix("[b]").unwrap();
+            let biases = biases.strip_suffix("[\\b]").unwrap();
+            let biases = biases.split(",").collect::<Vec<&str>>();
+            for e in biases {
+                b_block_builder.push(e.parse::<f64>().unwrap());
+            }
+            b_block_holder.push(b_block_builder);
+        }
+    }
+
+    let mut l_blocks = vec![];
+    for i in 0..layer_sizes.len()-1 {
+        l_blocks.push((w_block_holder[i].clone(),b_block_holder[i].clone()));
+    }
+
+    let layer_sizes: Vec<usize> = layer_sizes; //not mut anymore
+
+    let mut layers = Network::start_network(layer_sizes[0]);
+    for i in 0..layer_sizes.len()-2 {
+        layers.add_layer((l_blocks[i].clone(),l_blocks[i+1].clone()));
+    }
+
+    layers
+}
+
+
+fn main() {
+    let file: &str = "src/test_network.txt";
+    let network: Network = build_network_from_txt_file(file);
+
+    println!("{:?}",network);
+    //first layer still has no values in it's node array when initialized like this
 }
 
 
