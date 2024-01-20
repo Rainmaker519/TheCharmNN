@@ -84,15 +84,20 @@ type Network = (Vec<Layer>,Vec<usize>);
 
 trait NetworkBuild {
     fn start_network(input_layer_size: usize) -> Network;
-    fn add_layer(&mut self, l_chunk: ((Vec<Vec<Weight>>,Vec<f64>),(Vec<Vec<Weight>>,Vec<f64>)));
+    fn add_hidden_layer(&mut self, l_chunk: ((Vec<Vec<Weight>>, Vec<f64>), (Vec<Vec<Weight>>, Vec<f64>)));
+    fn add_output_layer(&mut self, l_chunk: (Vec<Vec<Weight>>, Vec<f64>));
 }
 impl NetworkBuild for Network {
     fn start_network(input_layer_size: usize) -> Network {
-        let input_layer: Layer = (vec![], input_layer_size);
+        let mut input_nodes: Vec<Node> = vec![];
+        for i in 0..input_layer_size {
+            input_nodes.push(((0.0f64, ActivationType::Linear), vec![], vec![], 0, 0, 0f64));
+        }
+        let input_layer: Layer = (input_nodes, input_layer_size);
         let network: Network = (vec![input_layer], vec![input_layer_size]);
         network
     }
-    fn add_layer(&mut self, l_chunks: ((Vec<Vec<Weight>>, Vec<f64>),(Vec<Vec<Weight>>,Vec<f64>))) {
+    fn add_hidden_layer(&mut self, l_chunks: ((Vec<Vec<Weight>>, Vec<f64>), (Vec<Vec<Weight>>, Vec<f64>))) {
         let weights_0 = l_chunks.0.0;
         let weights_1 = l_chunks.1.0;
         let biases = l_chunks.0.1;
@@ -109,11 +114,11 @@ impl NetworkBuild for Network {
 
         for i in 0..weights_1.len() {
             nodes.push((
-                (0f64,ActivationType::Sigmoid),
-                in_node_w_holder.clone()[i].clone(),
+                (0f64, ActivationType::Sigmoid),
                 weights_1[i].clone(),
+                in_node_w_holder.clone()[i].clone(),
+                weights_1[0].len(),
                 weights_0.len(),
-                weights_1.len(),
                 biases[i]
             ));
         }
@@ -121,7 +126,38 @@ impl NetworkBuild for Network {
         self.0.push((nodes, weights_1.len()));
         //checked and weights connected correctly according to test in main
     }
+
+    fn add_output_layer(&mut self, l_chunk: (Vec<Vec<Weight>>, Vec<f64>)) {
+        let weights = l_chunk.0;
+        let biases = l_chunk.1;
+        let mut nodes: Vec<Node> = vec![];
+        let mut in_node_w_holder = vec![];
+
+        for i in 0..weights[0].len() {
+            let mut in_bank = vec![];
+            for w in weights.iter() {
+                in_bank.push(w[i]);
+            }
+            in_node_w_holder.push(in_bank);
+        }
+
+        for i in 0..weights[0].len() {
+            nodes.push((
+                (0f64, ActivationType::Sigmoid),
+                vec![],
+                in_node_w_holder.clone()[i].clone(),
+                0,
+                weights[0].len(),
+                biases[i]
+            ));
+        }
+
+        self.0.push((nodes, weights[0].len()));
+        //checked and weights connected correctly according to test in main
+    }
 }
+
+
 
 fn build_network_from_txt_file(txt_file_name: &str) -> Network {
     let file = fs::read_to_string(txt_file_name);
@@ -186,10 +222,20 @@ fn build_network_from_txt_file(txt_file_name: &str) -> Network {
     let layer_sizes: Vec<usize> = layer_sizes; //not mut anymore
 
     let mut layers = Network::start_network(layer_sizes[0]);
-    for i in 0..layer_sizes.len()-2 {
-        layers.add_layer((l_blocks[i].clone(),l_blocks[i+1].clone()));
+    for i in 0..layer_sizes.len()-1 {
+        if i == 0 {
+            for node_ind in 0..layers.0[0].0.len() {
+                layers.0[0].0[node_ind].1 = l_blocks[i].0[node_ind].clone();
+                layers.0[0].0[node_ind].3 = l_blocks[i].0[node_ind].len();
+            }
+        }
+        if i == layer_sizes.len()-2 {
+            layers.add_output_layer(l_blocks[i].clone());
+        }
+        else {
+            layers.add_hidden_layer((l_blocks[i].clone(), l_blocks[i+1].clone()));
+        }
     }
-
     layers
 }
 
@@ -198,7 +244,18 @@ fn main() {
     let file: &str = "src/test_network.txt";
     let network: Network = build_network_from_txt_file(file);
 
-    println!("{:?}",network);
+    println!("{:?},{:?}",network.0.len(), network.0[0].0[0].1.len());
+    let mut l_count = 0;
+    let mut n_count = 0;
+    for l in network.0.clone() {
+        for n in l.0.clone() {
+            println!("{:?},{:?}",&l_count, &n_count);
+            dbg!(n.get_nv_pairs());
+            n_count += 1;
+        }
+        l_count += 1;
+        n_count = 0;
+    }
     //first layer still has no values in it's node array when initialized like this
 }
 
