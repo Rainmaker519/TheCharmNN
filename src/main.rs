@@ -33,7 +33,16 @@ type Node = (PreActivationValue, Vec<Weight>, Vec<Weight>, usize, usize, f64); /
 
 trait NodeUtils {
     fn get_nv_pairs(&self) -> Vec<(usize,(f64,f64))>;
-    fn set_preactivation_value(&mut self, v: f64, t: ActivationType);
+    fn set_pav(&mut self, v: f64, t: ActivationType);
+    fn get_pav(&self) -> PreActivationValue;
+    fn get_outgoing_weights(&self) -> Vec<Weight>;
+    fn set_outgoing_weights(&mut self, weights: Vec<Weight>);
+    fn get_incoming_weights(&self) -> Vec<Weight>;
+    fn set_incoming_weights(&mut self, weights: Vec<Weight>);
+    fn get_size_next_layer(&self) -> usize;
+    fn set_size_next_layer(&mut self, size: usize);
+    fn get_size_prev_layer(&self) -> usize;
+    fn get_bias(&self) -> f64;
 }
 impl NodeUtils for Node {
     fn get_nv_pairs(&self)  -> Vec<(usize,(f64,f64))> {
@@ -49,9 +58,36 @@ impl NodeUtils for Node {
         }
         result
     }
-    fn set_preactivation_value(&mut self, v: f64, t: ActivationType) {
+    fn set_pav(&mut self, v: f64, t: ActivationType) {
         self.0.0 = v;
         self.0.1 = t;
+    }
+    fn get_pav(&self) -> PreActivationValue {
+        self.0
+    }
+    fn get_outgoing_weights(&self) -> Vec<Weight> {
+        self.1.clone()
+    }
+    fn set_outgoing_weights(&mut self, weights: Vec<Weight>) {
+        self.1 = weights
+    }
+    fn get_incoming_weights(&self) -> Vec<Weight> {
+        self.2.clone()
+    }
+    fn set_incoming_weights(&mut self, weights: Vec<Weight>) {
+        self.2 = weights
+    }
+    fn get_size_next_layer(&self) -> usize {
+        self.3
+    }
+    fn set_size_next_layer(&mut self, size: usize){
+        self.3 = size
+    }
+    fn get_size_prev_layer(&self) -> usize {
+        self.4
+    }
+    fn get_bias(&self) -> f64 {
+        self.5
     }
 }
 
@@ -86,8 +122,6 @@ trait NetworkUtils {
     fn start_network(input_layer_size: usize) -> Network;
     fn add_hidden_layer(&mut self, l_chunk: ((Vec<Vec<Weight>>, Vec<f64>), (Vec<Vec<Weight>>, Vec<f64>)));
     fn add_output_layer(&mut self, l_chunk: (Vec<Vec<Weight>>, Vec<f64>));
-
-    //fn forward_pass();
 }
 impl NetworkUtils for Network {
     fn start_network(input_layer_size: usize) -> Network {
@@ -157,10 +191,6 @@ impl NetworkUtils for Network {
         self.0.push((nodes, weights[0].len()));
         //checked and weights connected correctly according to test in main
     }
-
-    //fn forward_pass() {
-    //    todo!()
-    //}
 }
 
 
@@ -231,8 +261,8 @@ fn build_network_from_txt_file(txt_file_name: &str) -> Network {
     for i in 0..layer_sizes.len()-1 {
         if i == 0 {
             for node_ind in 0..layers.0[0].0.len() {
-                layers.0[0].0[node_ind].1 = l_blocks[i].0[node_ind].clone();
-                layers.0[0].0[node_ind].3 = l_blocks[i].0[node_ind].len();
+                layers.0[0].0[node_ind].set_outgoing_weights(l_blocks[i].0[node_ind].clone());
+                layers.0[0].0[node_ind].set_size_next_layer(l_blocks[i].0[node_ind].len());
             }
         }
         if i == layer_sizes.len()-2 {
