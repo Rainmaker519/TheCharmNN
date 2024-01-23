@@ -11,10 +11,10 @@ enum ActivationType {
 
 type PreActivationValue = (f64,ActivationType);
 
-trait PAVForwardPass {
+trait PAVUtils {
     fn activate(&self) -> Option<(f64,f64)>;
 }
-impl PAVForwardPass for PreActivationValue {
+impl PAVUtils for PreActivationValue {
     fn activate(&self) -> Option<(f64, f64)> {
         return if self.1.clone() == ActivationType::Linear { //0 is linear
             Option::Some((self.0,1.0))
@@ -31,11 +31,11 @@ impl PAVForwardPass for PreActivationValue {
 
 type Node = (PreActivationValue, Vec<Weight>, Vec<Weight>, usize, usize, f64); // last 2 next and prev layer sizes + bias
 
-trait NodeForwardPass {
+trait NodeUtils {
     fn get_nv_pairs(&self) -> Vec<(usize,(f64,f64))>;
     fn set_preactivation_value(&mut self, v: f64, t: ActivationType);
 }
-impl NodeForwardPass for Node {
+impl NodeUtils for Node {
     fn get_nv_pairs(&self)  -> Vec<(usize,(f64,f64))> {
         let mut result: Vec<(usize,(f64,f64))> = vec![];
         for i in 0..self.3 { // size of next layer
@@ -56,10 +56,10 @@ impl NodeForwardPass for Node {
 }
 
 type Layer = (Vec<Node>, usize);
-trait MakeLayer {
+trait LayerUtils {
     fn make(v: Vec<Node>) -> Layer;
 }
-impl MakeLayer for Layer {
+impl LayerUtils for Layer {
     fn make(v: Vec<Node>) -> Layer {
         let l = *&v.len().clone();
         (v, l)
@@ -68,10 +68,10 @@ impl MakeLayer for Layer {
 
 type Weight = Option<f64>;
 
-trait MakeWeight {
+trait WeightUtils {
     fn make(v: f64) -> Weight;
 }
-impl MakeWeight for Weight {
+impl WeightUtils for Weight {
     fn make(v: f64) -> Weight {
         if v > 0f64 {
             return Option::Some(v);
@@ -82,12 +82,14 @@ impl MakeWeight for Weight {
 
 type Network = (Vec<Layer>,Vec<usize>);
 
-trait NetworkBuild {
+trait NetworkUtils {
     fn start_network(input_layer_size: usize) -> Network;
     fn add_hidden_layer(&mut self, l_chunk: ((Vec<Vec<Weight>>, Vec<f64>), (Vec<Vec<Weight>>, Vec<f64>)));
     fn add_output_layer(&mut self, l_chunk: (Vec<Vec<Weight>>, Vec<f64>));
+
+    //fn forward_pass();
 }
-impl NetworkBuild for Network {
+impl NetworkUtils for Network {
     fn start_network(input_layer_size: usize) -> Network {
         let mut input_nodes: Vec<Node> = vec![];
         for i in 0..input_layer_size {
@@ -155,6 +157,10 @@ impl NetworkBuild for Network {
         self.0.push((nodes, weights[0].len()));
         //checked and weights connected correctly according to test in main
     }
+
+    //fn forward_pass() {
+    //    todo!()
+    //}
 }
 
 
@@ -256,7 +262,6 @@ fn main() {
         l_count += 1;
         n_count = 0;
     }
-    //first layer still has no values in it's node array when initialized like this
 }
 
 
