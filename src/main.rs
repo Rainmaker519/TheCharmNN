@@ -47,9 +47,9 @@ trait NodeUtils {
 impl NodeUtils for Node {
     fn get_nv_pairs(&self)  -> Vec<(usize,(f64,f64))> {
         let mut result: Vec<(usize,(f64,f64))> = vec![];
-        for i in 0..self.3 { // size of next layer
-            if self.1[i].is_some() {
-                let post_act_val = &self.0.activate();
+        for i in 0..self.get_size_next_layer() { // size of next layer
+            if self.get_outgoing_weights()[i].is_some() {
+                let post_act_val = &self.get_pav().activate();
                 match post_act_val {
                     None => {},
                     Some(x) => {result.push((i,*x))},
@@ -94,11 +94,19 @@ impl NodeUtils for Node {
 type Layer = (Vec<Node>, usize);
 trait LayerUtils {
     fn make(v: Vec<Node>) -> Layer;
+    fn get_layer_size(&self) -> usize;
+    fn get_nodes(&self) -> Vec<Node>;
 }
 impl LayerUtils for Layer {
     fn make(v: Vec<Node>) -> Layer {
         let l = *&v.len().clone();
         (v, l)
+    }
+    fn get_layer_size(&self) -> usize {
+        self.1
+    }
+    fn get_nodes(&self) -> Vec<Node> {
+        self.0.clone()
     }
 }
 
@@ -122,6 +130,7 @@ trait NetworkUtils {
     fn start_network(input_layer_size: usize) -> Network;
     fn add_hidden_layer(&mut self, l_chunk: ((Vec<Vec<Weight>>, Vec<f64>), (Vec<Vec<Weight>>, Vec<f64>)));
     fn add_output_layer(&mut self, l_chunk: (Vec<Vec<Weight>>, Vec<f64>));
+    fn get_layers(&self) -> Vec<Layer>;
 }
 impl NetworkUtils for Network {
     fn start_network(input_layer_size: usize) -> Network {
@@ -162,7 +171,6 @@ impl NetworkUtils for Network {
         self.0.push((nodes, weights_1.len()));
         //checked and weights connected correctly according to test in main
     }
-
     fn add_output_layer(&mut self, l_chunk: (Vec<Vec<Weight>>, Vec<f64>)) {
         let weights = l_chunk.0;
         let biases = l_chunk.1;
@@ -190,6 +198,9 @@ impl NetworkUtils for Network {
 
         self.0.push((nodes, weights[0].len()));
         //checked and weights connected correctly according to test in main
+    }
+    fn get_layers(&self) -> Vec<Layer> {
+        self.0.clone()
     }
 }
 
@@ -280,11 +291,11 @@ fn main() {
     let file: &str = "src/test_network.txt";
     let network: Network = build_network_from_txt_file(file);
 
-    println!("{:?},{:?}",network.0.len(), network.0[0].0[0].1.len());
+    println!("{:?},{:?}",network.get_layers().len(), network.get_layers()[0].get_nodes()[0].get_size_next_layer());
     let mut l_count = 0;
     let mut n_count = 0;
     for l in network.0.clone() {
-        for n in l.0.clone() {
+        for n in l.get_nodes() {
             println!("{:?},{:?}",&l_count, &n_count);
             dbg!(n.get_nv_pairs());
             n_count += 1;
