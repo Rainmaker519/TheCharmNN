@@ -29,8 +29,9 @@ impl PAVUtils for PreActivationValue {
     }
 }
 
-type Node = (PreActivationValue, Vec<Weight>, Vec<Weight>, usize, usize, f64); // last 2 next and prev layer sizes + bias
-
+type Node = (PreActivationValue, Vec<Weight>, Vec<Weight>, usize, usize, f64, Option<f64>, Option<f64>); // last 2 next and prev layer sizes + bias
+//0 - preactval, 1 - outgoing weights, 2 - incoming weights, 3 - next layer size, 4 - prev layer size,
+//  5 - bias, 6 - biasDelta, 7 - errorDelta (during bp),
 trait NodeUtils {
     fn get_nv_pairs(&self) -> Vec<(usize,(f64,f64))>;
     fn set_pav(&mut self, v: f64, t: ActivationType);
@@ -43,6 +44,10 @@ trait NodeUtils {
     fn set_size_next_layer(&mut self, size: usize);
     fn get_size_prev_layer(&self) -> usize;
     fn get_bias(&self) -> f64;
+    fn get_bias_delta(&self) -> Option<f64>;
+    fn get_error_delta(&self) -> Option<f64>;
+    fn set_error_delta(&mut self, val: f64);
+    fn set_bias_delta(&mut self, val: f64);
 }
 impl NodeUtils for Node {
     fn get_nv_pairs(&self)  -> Vec<(usize,(f64,f64))> {
@@ -88,6 +93,18 @@ impl NodeUtils for Node {
     }
     fn get_bias(&self) -> f64 {
         self.5
+    }
+    fn get_bias_delta(&self) -> Option<f64> {
+        return self.6;
+    }
+    fn get_error_delta(&self) -> Option<f64> {
+        self.7
+    }
+    fn set_error_delta(&mut self, val: f64) {
+        self.7 = Option::Some(val);
+    }
+    fn set_bias_delta(&mut self, val: f64) {
+        self.6 = Option::Some(val);
     }
 }
 
@@ -136,7 +153,7 @@ impl NetworkUtils for Network {
     fn start_network(input_layer_size: usize) -> Network {
         let mut input_nodes: Vec<Node> = vec![];
         for i in 0..input_layer_size {
-            input_nodes.push(((0.0f64, ActivationType::Linear), vec![], vec![], 0, 0, 0f64));
+            input_nodes.push(((0.0f64, ActivationType::Linear), vec![], vec![], 0, 0, 0f64, Option::None, Option::None));
         }
         let input_layer: Layer = (input_nodes, input_layer_size);
         let network: Network = (vec![input_layer], vec![input_layer_size]);
@@ -164,7 +181,9 @@ impl NetworkUtils for Network {
                 in_node_w_holder.clone()[i].clone(),
                 weights_1[0].len(),
                 weights_0.len(),
-                biases[i]
+                biases[i],
+                Option::None,
+                Option::None,
             ));
         }
 
@@ -192,7 +211,9 @@ impl NetworkUtils for Network {
                 in_node_w_holder.clone()[i].clone(),
                 0,
                 weights[0].len(),
-                biases[i]
+                biases[i],
+                Option::None,
+                Option::None,
             ));
         }
 
