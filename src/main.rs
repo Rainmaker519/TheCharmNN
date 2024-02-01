@@ -1,6 +1,7 @@
 use std::f64::consts;
 use std::fs;
 use std::str::FromStr;
+use rand::random;
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 enum ActivationType {
@@ -29,9 +30,9 @@ impl PAVUtils for PreActivationValue {
     }
 }
 
-type Node = (PreActivationValue, Vec<Weight>, Vec<Weight>, usize, usize, f64, Option<f64>, Option<f64>); // last 2 next and prev layer sizes + bias
+type Node = (PreActivationValue, Vec<Weight>, Vec<Weight>, usize, usize, f64, Option<f64>, Option<f64>, Option<f64>); // last 2 next and prev layer sizes + bias
 //0 - preactval, 1 - outgoing weights, 2 - incoming weights, 3 - next layer size, 4 - prev layer size,
-//  5 - bias, 6 - biasDelta, 7 - errorDelta (during bp),
+//  5 - bias, 6 - biasDelta, 7 - errorDelta (during bp), 8 - post prime activation value
 trait NodeUtils {
     fn get_nv_pairs(&self) -> Vec<(usize,(f64,f64))>;
     fn set_pav(&mut self, v: f64, t: ActivationType);
@@ -48,6 +49,9 @@ trait NodeUtils {
     fn get_error_delta(&self) -> Option<f64>;
     fn set_error_delta(&mut self, val: f64);
     fn set_bias_delta(&mut self, val: f64);
+    fn forward(&mut self) -> Vec<f64>;
+    fn set_pp_av(&mut self, v: f64);
+    fn get_pp_av(&self) -> Option<f64>;
 }
 impl NodeUtils for Node {
     fn get_nv_pairs(&self)  -> Vec<(usize,(f64,f64))> {
@@ -106,6 +110,44 @@ impl NodeUtils for Node {
     fn set_bias_delta(&mut self, val: f64) {
         self.6 = Option::Some(val);
     }
+
+    fn forward(&mut self) -> Vec<f64> {
+        //make empty list to eventually output
+        let mut add_to_next_layer_pav: Vec<f64> = vec![];
+
+        //get nv pairs (ind_of_node_to, (post_act, post_prime_act)) and weights
+        let pairs: Vec<(usize,(f64,f64))> = self.get_nv_pairs();
+        let weights = self.get_outgoing_weights();
+
+        //sanity check that network is fully connected (n pairs == n weights)
+        if pairs.len() != weights.len() {
+            println!("{:?}","NUM WEIGHTS DIFFERENT FROM NUM PAIRS");
+            return vec![];
+        }
+        //for first one, update node to have post_act and post prime act
+        for i in 0..pairs.len() {
+            match weights[i] {
+                None => {
+                    println!("{:?}","NONE WEIGHT VALUE REFERENCED");
+                    return vec![];
+                }
+                Some(x) => {
+                    let v = pairs[i].1.0 * x;
+                    add_to_next_layer_pav.push(v);
+                    self.set_pp_av(pairs[i].1.1);
+                }
+            }
+        }
+        add_to_next_layer_pav
+    }
+
+    fn set_pp_av(&mut self, v: f64) {
+        self.8 = Option::Some(v);
+    }
+
+    fn get_pp_av(&self) -> Option<f64> {
+        self.8
+    }
 }
 
 type Layer = (Vec<Node>, usize);
@@ -152,8 +194,8 @@ trait NetworkUtils {
 impl NetworkUtils for Network {
     fn start_network(input_layer_size: usize) -> Network {
         let mut input_nodes: Vec<Node> = vec![];
-        for i in 0..input_layer_size {
-            input_nodes.push(((0.0f64, ActivationType::Linear), vec![], vec![], 0, 0, 0f64, Option::None, Option::None));
+        for _ in 0..input_layer_size {
+            input_nodes.push(((0.0f64, ActivationType::Linear), vec![], vec![], 0, 0, 0f64, Option::None, Option::None, Option::None));
         }
         let input_layer: Layer = (input_nodes, input_layer_size);
         let network: Network = (vec![input_layer], vec![input_layer_size]);
@@ -184,6 +226,7 @@ impl NetworkUtils for Network {
                 biases[i],
                 Option::None,
                 Option::None,
+                Option::None
             ));
         }
 
@@ -214,6 +257,7 @@ impl NetworkUtils for Network {
                 biases[i],
                 Option::None,
                 Option::None,
+                Option::None
             ));
         }
 
@@ -316,9 +360,10 @@ fn main() {
     let mut l_count = 0;
     let mut n_count = 0;
     for l in network.0.clone() {
-        for n in l.get_nodes() {
+        for mut n in l.get_nodes() {
             println!("{:?},{:?}",&l_count, &n_count);
-            dbg!(n.get_nv_pairs());
+            n.set_pav(random(), ActivationType::Linear);
+            dbg!(n.forward());
             n_count += 1;
         }
         l_count += 1;
