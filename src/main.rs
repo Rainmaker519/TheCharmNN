@@ -190,6 +190,7 @@ trait NetworkUtils {
     fn add_hidden_layer(&mut self, l_chunk: ((Vec<Vec<Weight>>, Vec<f64>), (Vec<Vec<Weight>>, Vec<f64>)));
     fn add_output_layer(&mut self, l_chunk: (Vec<Vec<Weight>>, Vec<f64>));
     fn get_layers(&self) -> Vec<Layer>;
+    fn forward_pass(&mut self) -> Vec<Vec<f64>>;
 }
 impl NetworkUtils for Network {
     fn start_network(input_layer_size: usize) -> Network {
@@ -266,6 +267,29 @@ impl NetworkUtils for Network {
     }
     fn get_layers(&self) -> Vec<Layer> {
         self.0.clone()
+    }
+
+    fn forward_pass(&mut self) -> Vec<Vec<f64>> {
+        let mut result = vec![];
+        for layer_ind in 0..self.1.len() {
+            let mut add_sums: Vec<f64> = vec![];
+            for node_ind in 0..self.get_layers()[layer_ind].get_nodes().len() {
+                let node_outs = self.get_layers()[layer_ind].get_nodes()[node_ind].forward();
+                //println!("{:?}",node_outs);
+                if layer_ind == 0 {
+                    add_sums = node_outs;
+                }
+                else {
+                    for v in 0..node_outs.len() {
+                        add_sums[v] += node_outs[v];
+                    }
+                }
+            }
+            result.push(add_sums);
+            //println!("{:?}",add_sums);
+        }
+
+        result
     }
 }
 
@@ -354,12 +378,17 @@ fn build_network_from_txt_file(txt_file_name: &str) -> Network {
 
 fn main() {
     let file: &str = "src/test_network.txt";
-    let network: Network = build_network_from_txt_file(file);
+    let mut network: Network = build_network_from_txt_file(file);
 
     println!("{:?},{:?}",network.get_layers().len(), network.get_layers()[0].get_nodes()[0].get_size_next_layer());
+
+    println!("{:?}",network.forward_pass());
+
     let mut l_count = 0;
     let mut n_count = 0;
+    /*
     for l in network.0.clone() {
+
         for mut n in l.get_nodes() {
             println!("{:?},{:?}",&l_count, &n_count);
             n.set_pav(random(), ActivationType::Linear);
@@ -369,6 +398,9 @@ fn main() {
         l_count += 1;
         n_count = 0;
     }
+    */
+
+    //Why are the values from the node forward all 0 and only one layer worth of values coming through.
 }
 
 
