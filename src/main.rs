@@ -271,11 +271,12 @@ impl NetworkUtils for Network {
 
     fn forward_pass(&mut self) -> Vec<Vec<f64>> {
         let mut result = vec![];
-        for layer_ind in 0..self.1.len() {
-            let mut add_sums: Vec<f64> = vec![];
+
+        for layer_ind in 0..(self.get_layers().len()-1) {
+            let mut add_sums: Vec<f64> = vec![0.0f64;self.get_layers()[layer_ind+1].get_nodes().len()];
             for node_ind in 0..self.get_layers()[layer_ind].get_nodes().len() {
                 let node_outs = self.get_layers()[layer_ind].get_nodes()[node_ind].forward();
-                //println!("{:?}",node_outs);
+                println!("{:?}",node_outs);
                 if layer_ind == 0 {
                     add_sums = node_outs;
                 }
@@ -380,7 +381,9 @@ fn main() {
     let file: &str = "src/test_network.txt";
     let mut network: Network = build_network_from_txt_file(file);
 
-    println!("{:?},{:?}",network.get_layers().len(), network.get_layers()[0].get_nodes()[0].get_size_next_layer());
+    //println!("{:?},{:?}",network.get_layers().len(), network.get_layers()[0].get_nodes()[0].get_size_next_layer());
+
+    // First layer ALWAYS gonna b zero until I set the input values before calling the network's forward pass!
 
     println!("{:?}",network.forward_pass());
 
