@@ -190,7 +190,8 @@ trait NetworkUtils {
     fn add_hidden_layer(&mut self, l_chunk: ((Vec<Vec<Weight>>, Vec<f64>), (Vec<Vec<Weight>>, Vec<f64>)));
     fn add_output_layer(&mut self, l_chunk: (Vec<Vec<Weight>>, Vec<f64>));
     fn get_layers(&self) -> Vec<Layer>;
-    fn forward_pass(&mut self) -> Vec<Vec<f64>>;
+    fn forward_pass_part_one(&mut self) -> Vec<Vec<f64>>;
+    fn set_input_values(&mut self, values: Vec<f64>);
 }
 impl NetworkUtils for Network {
     fn start_network(input_layer_size: usize) -> Network {
@@ -269,7 +270,7 @@ impl NetworkUtils for Network {
         self.0.clone()
     }
 
-    fn forward_pass(&mut self) -> Vec<Vec<f64>> {
+    fn forward_pass_part_one(&mut self) -> Vec<Vec<f64>> {
         let mut result = vec![];
 
         for layer_ind in 0..(self.get_layers().len()-1) {
@@ -287,10 +288,19 @@ impl NetworkUtils for Network {
                 }
             }
             result.push(add_sums);
-            //println!("{:?}",add_sums);
         }
-
         result
+    }
+
+    fn set_input_values(&mut self, values: Vec<f64>) {
+        for i in 0..values.len() {
+            //Can't use get_layers and get_nodes for SETTING values since they use clone!!!!!!!!!!!!!!!!!!
+            //  self.get_layers()[0].get_nodes()[i].set_pav(values[i], ActivationType::Linear);
+            //self.0 - layers
+            //self.0[0] - input layer
+            //self.0[0].0 - nodes
+            self.0[0].0[i].set_pav(values[i], ActivationType::Linear);
+        }
     }
 }
 
@@ -384,8 +394,10 @@ fn main() {
     //println!("{:?},{:?}",network.get_layers().len(), network.get_layers()[0].get_nodes()[0].get_size_next_layer());
 
     // First layer ALWAYS gonna b zero until I set the input values before calling the network's forward pass!
+    let example_input_values = vec![0.32f64,0.1103f64,0.978f64,0.6066f64];
+    network.set_input_values(example_input_values);
 
-    println!("{:?}",network.forward_pass());
+    println!("{:?}",network.forward_pass_part_one());
 
     let mut l_count = 0;
     let mut n_count = 0;
