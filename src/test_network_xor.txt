@@ -1,0 +1,10 @@
+#the weights are between each layer
+#and the biases are for all layers
+#except the input, so both are
+#(n_layers-1) elements. {the [L]s}
+[l_sizes]2,2,1[\l_sizes]
+[w].1,.2|.3,.4[\w]
+[b].5,.7[\b]
+[w].6|.8[\w]
+[b]0[\b]
+[end]

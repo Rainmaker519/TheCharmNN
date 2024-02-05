@@ -6,7 +6,7 @@ use rand::random;
 #[derive(Copy, Clone, PartialEq, Debug)]
 enum ActivationType {
     Sigmoid,
-    Tanh,
+    TanH,
     Linear,
 }
 
@@ -19,12 +19,19 @@ impl PAVUtils for PreActivationValue {
     fn activate(&self) -> Option<(f64, f64)> {
         return if self.1.clone() == ActivationType::Linear { //0 is linear
             Option::Some((self.0,1.0))
-        } else if self.1.clone() == ActivationType::Sigmoid { //1 is sigmoid
+        }
+        else if self.1.clone() == ActivationType::Sigmoid { //1 is sigmoid
             let post_activation = 1.0 / (1.0 + consts::E.powf(-self.0));
             let post_prime_activation = consts::E.powf(self.0)
                 / (1.0 + consts::E.powf(self.0)).powf(2.0);
             Option::Some((post_activation,post_prime_activation))
-        } else {
+        }
+        else if self.1.clone() == ActivationType::TanH {
+            let post_activation = self.0.tanh();
+            let post_prime_activation = 1f64 - self.0.tanh().powi(2);
+            Option::Some((post_activation,post_prime_activation))
+        }
+        else {
             Option::None
         }
     }
@@ -56,6 +63,7 @@ trait NodeUtils {
 impl NodeUtils for Node {
     fn get_nv_pairs(&self)  -> Vec<(usize,(f64,f64))> {
         let mut result: Vec<(usize,(f64,f64))> = vec![];
+
         for i in 0..self.get_size_next_layer() { // size of next layer
             if self.get_outgoing_weights()[i].is_some() {
                 let post_act_val = &self.get_pav().activate();
@@ -115,6 +123,9 @@ impl NodeUtils for Node {
         //make empty list to eventually output
         let mut add_to_next_layer_pav: Vec<f64> = vec![];
 
+        //add nodes bias to the preactivation value before activating
+        self.set_pav(self.get_pav().0 + self.get_bias(), self.get_pav().1);
+
         //get nv pairs (ind_of_node_to, (post_act, post_prime_act)) and weights
         let pairs: Vec<(usize,(f64,f64))> = self.get_nv_pairs();
         let weights = self.get_outgoing_weights();
@@ -124,6 +135,7 @@ impl NodeUtils for Node {
             println!("{:?}","NUM WEIGHTS DIFFERENT FROM NUM PAIRS");
             return vec![];
         }
+
         //for first one, update node to have post_act and post prime act
         for i in 0..pairs.len() {
             match weights[i] {
@@ -138,6 +150,9 @@ impl NodeUtils for Node {
                 }
             }
         }
+        println!("Bias: {:?}",self.get_bias());
+        println!("Add to next layer pav node: {:?}",&add_to_next_layer_pav);
+
         add_to_next_layer_pav
     }
 
@@ -192,7 +207,7 @@ trait NetworkUtils {
     fn add_output_layer(&mut self, l_chunk: (Vec<Vec<Weight>>, Vec<f64>));
     fn get_layers(&self) -> Vec<Layer>;
     fn forward_pass(&mut self) -> Vec<f64>;
-    fn set_layer_values(&mut self, layer_ind: usize, values: Vec<f64>);
+    fn set_layer_values(&mut self, layer_ind: usize, values: Vec<f64>, activation_type: ActivationType);
 }
 impl NetworkUtils for Network {
     fn start_network(input_layer_size: usize) -> Network {
@@ -252,7 +267,7 @@ impl NetworkUtils for Network {
 
         for i in 0..weights[0].len() {
             nodes.push((
-                (0f64, ActivationType::Sigmoid),
+                (0f64, ActivationType::TanH),
                 vec![],
                 in_node_w_holder.clone()[i].clone(),
                 0,
@@ -273,10 +288,12 @@ impl NetworkUtils for Network {
 
     fn forward_pass(&mut self) -> Vec<f64> {
         for layer_ind in 0..(self.get_layers().len()-1) {
-            let mut add_sums: Vec<f64> = vec![0.0f64;self.get_layers()[layer_ind+1].get_nodes().len()];
+            let num_nodes_next_layer = self.get_layers()[layer_ind+1].get_nodes().len();
+            let mut add_sums: Vec<f64> = vec![0.0f64; num_nodes_next_layer];
 
             for node_ind in 0..self.get_layers()[layer_ind].get_nodes().len() {
                 let node_outs = self.get_layers()[layer_ind].get_nodes()[node_ind].forward();
+                println!("Q{:?}",&node_outs);
                 if layer_ind == 0 {
                     add_sums = node_outs;
                 }
@@ -288,23 +305,24 @@ impl NetworkUtils for Network {
             }
 
             if layer_ind == self.get_layers().len()-2 {
-                return add_sums;
+                self.set_layer_values(layer_ind+1,add_sums.clone(),ActivationType::TanH);
+                return add_sums.iter().map(|x| x.tanh()).collect();
             }
             else {
-                self.set_layer_values(layer_ind+1,add_sums);
+                self.set_layer_values(layer_ind+1,add_sums,ActivationType::Sigmoid);
             }
         }
         vec![]
     }
 
-    fn set_layer_values(&mut self, layer_ind: usize, values: Vec<f64>) {
+    fn set_layer_values(&mut self, layer_ind: usize, values: Vec<f64>, activation_type: ActivationType) {
         for i in 0..values.len() {
             //Can't use get_layers and get_nodes for SETTING values since they use clone!!!!!!!!!!!!!!!!!!
             //  self.get_layers()[0].get_nodes()[i].set_pav(values[i], ActivationType::Linear);
             //self.0 - layers
             //self.0[0] - input layer
             //self.0[0].0 - nodes
-            self.0[layer_ind].0[i].set_pav(values[i], ActivationType::Linear);
+            self.0[layer_ind].0[i].set_pav(values[i], activation_type);
         }
     }
 }
@@ -393,11 +411,11 @@ fn build_network_from_txt_file(txt_file_name: &str) -> Network {
 
 
 fn main() {
-    let file: &str = "src/test_network.txt";
+    let file: &str = "src/test_network_xor.txt";
     let mut network: Network = build_network_from_txt_file(file);
 
-    let example_input_values = vec![0.32f64,-0.1103f64,-0.978f64,0.606f64];
-    network.set_layer_values(0, example_input_values);
+    let example_input_values = vec![0f64,0f64];
+    network.set_layer_values(0, example_input_values, ActivationType::Linear);
 
     println!("{:?}",network.forward_pass());
 }
