@@ -272,16 +272,11 @@ impl NetworkUtils for Network {
     }
 
     fn forward_pass(&mut self) -> Vec<f64> {
-
-        //RN I'm doing this for all layers, but the values for all except the following layer
-        //  are going to be incorrect since the values from the prev run haven't yet been added
-        //  when calculating
-
         for layer_ind in 0..(self.get_layers().len()-1) {
             let mut add_sums: Vec<f64> = vec![0.0f64;self.get_layers()[layer_ind+1].get_nodes().len()];
+
             for node_ind in 0..self.get_layers()[layer_ind].get_nodes().len() {
                 let node_outs = self.get_layers()[layer_ind].get_nodes()[node_ind].forward();
-                println!("{:?}",node_outs);
                 if layer_ind == 0 {
                     add_sums = node_outs;
                 }
@@ -292,14 +287,12 @@ impl NetworkUtils for Network {
                 }
             }
 
-            //instead of PUSHING add_sums, i should be ADDING add_sums
             if layer_ind == self.get_layers().len()-2 {
                 return add_sums;
             }
             else {
                 self.set_layer_values(layer_ind+1,add_sums);
             }
-            println!();
         }
         vec![]
     }
@@ -403,31 +396,10 @@ fn main() {
     let file: &str = "src/test_network.txt";
     let mut network: Network = build_network_from_txt_file(file);
 
-    //println!("{:?},{:?}",network.get_layers().len(), network.get_layers()[0].get_nodes()[0].get_size_next_layer());
-
-    // First layer ALWAYS gonna b zero until I set the input values before calling the network's forward pass!
     let example_input_values = vec![0.32f64,-0.1103f64,-0.978f64,0.606f64];
     network.set_layer_values(0, example_input_values);
 
     println!("{:?}",network.forward_pass());
-
-    //let mut l_count = 0;
-    //let mut n_count = 0;
-    /*
-    for l in network.0.clone() {
-
-        for mut n in l.get_nodes() {
-            println!("{:?},{:?}",&l_count, &n_count);
-            n.set_pav(random(), ActivationType::Linear);
-            dbg!(n.forward());
-            n_count += 1;
-        }
-        l_count += 1;
-        n_count = 0;
-    }
-    */
-
-    //Why are the values from the node forward all 0 and only one layer worth of values coming through.
 }
 
 
