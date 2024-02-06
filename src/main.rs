@@ -8,6 +8,8 @@ enum ActivationType {
     Sigmoid,
     TanH,
     Linear,
+    Squared,
+    Cubed,
 }
 
 type PreActivationValue = (f64,ActivationType);
@@ -29,6 +31,16 @@ impl PAVUtils for PreActivationValue {
         else if self.1.clone() == ActivationType::TanH {
             let post_activation = self.0.tanh();
             let post_prime_activation = 1f64 - self.0.tanh().powi(2);
+            Option::Some((post_activation,post_prime_activation))
+        }
+        else if self.1.clone() == ActivationType::Cubed {
+            let post_activation = self.0.powi(3);
+            let post_prime_activation = 3f64 * self.0.powi(2);
+            Option::Some((post_activation,post_prime_activation))
+        }
+        else if self.1.clone() == ActivationType::Squared {
+            let post_activation = self.0.powi(2);
+            let post_prime_activation = 2f64 * self.0;
             Option::Some((post_activation,post_prime_activation))
         }
         else {
@@ -123,8 +135,6 @@ impl NodeUtils for Node {
         //make empty list to eventually output
         let mut add_to_next_layer_pav: Vec<f64> = vec![];
 
-        //add nodes bias to the preactivation value before activating
-        self.set_pav(self.get_pav().0 + self.get_bias(), self.get_pav().1);
 
         //get nv pairs (ind_of_node_to, (post_act, post_prime_act)) and weights
         let pairs: Vec<(usize,(f64,f64))> = self.get_nv_pairs();
@@ -288,13 +298,14 @@ impl NetworkUtils for Network {
 
     fn forward_pass(&mut self) -> Vec<f64> {
         for layer_ind in 0..(self.get_layers().len()-1) {
+            println!("Nodes this layer: {:?}",&self.get_layers()[layer_ind].get_nodes());
             let num_nodes_next_layer = self.get_layers()[layer_ind+1].get_nodes().len();
             let mut add_sums: Vec<f64> = vec![0.0f64; num_nodes_next_layer];
 
             for node_ind in 0..self.get_layers()[layer_ind].get_nodes().len() {
                 let node_outs = self.get_layers()[layer_ind].get_nodes()[node_ind].forward();
                 println!("Q{:?}",&node_outs);
-                if layer_ind == 0 {
+                if node_ind == 0 {
                     add_sums = node_outs;
                 }
                 else {
@@ -304,12 +315,17 @@ impl NetworkUtils for Network {
                 }
             }
 
+            for node_ind in 0..num_nodes_next_layer {
+                add_sums[node_ind] += self.get_layers()[layer_ind+1].get_nodes()[node_ind].get_bias();
+            }
+
             if layer_ind == self.get_layers().len()-2 {
-                self.set_layer_values(layer_ind+1,add_sums.clone(),ActivationType::TanH);
-                return add_sums.iter().map(|x| x.tanh()).collect();
+                self.set_layer_values(layer_ind+1,add_sums.clone(),ActivationType::Squared);
+                return add_sums.iter().map(|x| x.powi(2)).collect();
             }
             else {
-                self.set_layer_values(layer_ind+1,add_sums,ActivationType::Sigmoid);
+                self.set_layer_values(layer_ind+1,add_sums,ActivationType::Cubed);
+                println!("Nodes this layer: {:?}",&self.get_layers()[layer_ind].get_nodes());
             }
         }
         vec![]
@@ -414,7 +430,7 @@ fn main() {
     let file: &str = "src/test_network_xor.txt";
     let mut network: Network = build_network_from_txt_file(file);
 
-    let example_input_values = vec![0f64,0f64];
+    let example_input_values = vec![3.5f64,-1.5f64];
     network.set_layer_values(0, example_input_values, ActivationType::Linear);
 
     println!("{:?}",network.forward_pass());
