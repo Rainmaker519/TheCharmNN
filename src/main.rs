@@ -160,9 +160,6 @@ impl NodeUtils for Node {
                 }
             }
         }
-        println!("Bias: {:?}",self.get_bias());
-        println!("Add to next layer pav node: {:?}",&add_to_next_layer_pav);
-
         add_to_next_layer_pav
     }
 
@@ -209,24 +206,27 @@ impl WeightUtils for Weight {
     }
 }
 
-type Network = (Vec<Layer>,Vec<usize>);
+type Network = (Vec<Layer>,Vec<usize>,Vec<ActivationType>);
 
 trait NetworkUtils {
-    fn start_network(input_layer_size: usize) -> Network;
+    fn start_network(input_layer_size: usize, act_types: Vec<ActivationType>) -> Network;
     fn add_hidden_layer(&mut self, l_chunk: ((Vec<Vec<Weight>>, Vec<f64>), (Vec<Vec<Weight>>, Vec<f64>)));
     fn add_output_layer(&mut self, l_chunk: (Vec<Vec<Weight>>, Vec<f64>));
     fn get_layers(&self) -> Vec<Layer>;
     fn forward_pass(&mut self) -> Vec<f64>;
     fn set_layer_values(&mut self, layer_ind: usize, values: Vec<f64>, activation_type: ActivationType);
+    fn get_input_act_type(&self) -> ActivationType;
+    fn get_hidden_act_type(&self) -> ActivationType;
+    fn get_output_act_type(&self) -> ActivationType;
 }
 impl NetworkUtils for Network {
-    fn start_network(input_layer_size: usize) -> Network {
+    fn start_network(input_layer_size: usize, act_types: Vec<ActivationType>) -> Network {
         let mut input_nodes: Vec<Node> = vec![];
         for _ in 0..input_layer_size {
             input_nodes.push(((0.0f64, ActivationType::Linear), vec![], vec![], 0, 0, 0f64, Option::None, Option::None, Option::None));
         }
         let input_layer: Layer = (input_nodes, input_layer_size);
-        let network: Network = (vec![input_layer], vec![input_layer_size]);
+        let network: Network = (vec![input_layer], vec![input_layer_size], act_types);
         network
     }
     fn add_hidden_layer(&mut self, l_chunks: ((Vec<Vec<Weight>>, Vec<f64>), (Vec<Vec<Weight>>, Vec<f64>))) {
@@ -298,13 +298,11 @@ impl NetworkUtils for Network {
 
     fn forward_pass(&mut self) -> Vec<f64> {
         for layer_ind in 0..(self.get_layers().len()-1) {
-            println!("Nodes this layer: {:?}",&self.get_layers()[layer_ind].get_nodes());
             let num_nodes_next_layer = self.get_layers()[layer_ind+1].get_nodes().len();
             let mut add_sums: Vec<f64> = vec![0.0f64; num_nodes_next_layer];
 
             for node_ind in 0..self.get_layers()[layer_ind].get_nodes().len() {
                 let node_outs = self.get_layers()[layer_ind].get_nodes()[node_ind].forward();
-                println!("Q{:?}",&node_outs);
                 if node_ind == 0 {
                     add_sums = node_outs;
                 }
@@ -320,12 +318,11 @@ impl NetworkUtils for Network {
             }
 
             if layer_ind == self.get_layers().len()-2 {
-                self.set_layer_values(layer_ind+1,add_sums.clone(),ActivationType::Squared);
+                self.set_layer_values(layer_ind+1,add_sums.clone(),self.get_output_act_type());
                 return add_sums.iter().map(|x| x.powi(2)).collect();
             }
             else {
-                self.set_layer_values(layer_ind+1,add_sums,ActivationType::Cubed);
-                println!("Nodes this layer: {:?}",&self.get_layers()[layer_ind].get_nodes());
+                self.set_layer_values(layer_ind+1,add_sums,self.get_hidden_act_type());
             }
         }
         vec![]
@@ -340,6 +337,16 @@ impl NetworkUtils for Network {
             //self.0[0].0 - nodes
             self.0[layer_ind].0[i].set_pav(values[i], activation_type);
         }
+    }
+
+    fn get_input_act_type(&self) -> ActivationType {
+        self.2[0]
+    }
+    fn get_hidden_act_type(&self) -> ActivationType {
+        self.2[1]
+    }
+    fn get_output_act_type(&self) -> ActivationType {
+        self.2[2]
     }
 }
 
@@ -407,7 +414,8 @@ fn build_network_from_txt_file(txt_file_name: &str) -> Network {
 
     let layer_sizes: Vec<usize> = layer_sizes; //not mut anymore
 
-    let mut layers = Network::start_network(layer_sizes[0]);
+    // TEMP JUST ASSIGNING ACT TYPES HERE CHANGE SYNTAX TO HAVE IN TXT FILE AT SOME POINT!!!!!!!!!!!!!
+    let mut layers = Network::start_network(layer_sizes[0], vec![ActivationType::Linear,ActivationType::Cubed,ActivationType::Squared]);
     for i in 0..layer_sizes.len()-1 {
         if i == 0 {
             for node_ind in 0..layers.0[0].0.len() {
