@@ -15,36 +15,35 @@ enum ActivationType {
 type PreActivationValue = (f64,ActivationType);
 
 trait PAVUtils {
-    fn activate(&self) -> Option<(f64,f64)>;
+    fn activate_pav(&self) -> Option<(f64, f64)>;
 }
 impl PAVUtils for PreActivationValue {
-    fn activate(&self) -> Option<(f64, f64)> {
-        return if self.1.clone() == ActivationType::Linear { //0 is linear
-            Option::Some((self.0,1.0))
-        }
-        else if self.1.clone() == ActivationType::Sigmoid { //1 is sigmoid
-            let post_activation = 1.0 / (1.0 + consts::E.powf(-self.0));
-            let post_prime_activation = consts::E.powf(self.0)
-                / (1.0 + consts::E.powf(self.0)).powf(2.0);
-            Option::Some((post_activation,post_prime_activation))
-        }
-        else if self.1.clone() == ActivationType::TanH {
-            let post_activation = self.0.tanh();
-            let post_prime_activation = 1f64 - self.0.tanh().powi(2);
-            Option::Some((post_activation,post_prime_activation))
-        }
-        else if self.1.clone() == ActivationType::Cubed {
-            let post_activation = self.0.powi(3);
-            let post_prime_activation = 3f64 * self.0.powi(2);
-            Option::Some((post_activation,post_prime_activation))
-        }
-        else if self.1.clone() == ActivationType::Squared {
-            let post_activation = self.0.powi(2);
-            let post_prime_activation = 2f64 * self.0;
-            Option::Some((post_activation,post_prime_activation))
-        }
-        else {
-            Option::None
+    fn activate_pav(&self) -> Option<(f64, f64)> {
+        match self.1.clone() {
+            ActivationType::Sigmoid => {
+                let post_activation = 1.0 / (1.0 + consts::E.powf(-self.0));
+                let post_prime_activation = consts::E.powf(self.0)
+                    / (1.0 + consts::E.powf(self.0)).powf(2.0);
+                Option::Some((post_activation,post_prime_activation))
+            }
+            ActivationType::TanH => {
+                let post_activation = self.0.tanh();
+                let post_prime_activation = 1f64 - self.0.tanh().powi(2);
+                Option::Some((post_activation,post_prime_activation))
+            }
+            ActivationType::Linear => {
+                Option::Some((self.0,1.0))
+            }
+            ActivationType::Squared => {
+                let post_activation = self.0.powi(2);
+                let post_prime_activation = 2f64 * self.0;
+                Option::Some((post_activation,post_prime_activation))
+            }
+            ActivationType::Cubed => {
+                let post_activation = self.0.powi(3);
+                let post_prime_activation = 3f64 * self.0.powi(2);
+                Option::Some((post_activation,post_prime_activation))
+            }
         }
     }
 }
@@ -53,7 +52,7 @@ type Node = (PreActivationValue, Vec<Weight>, Vec<Weight>, usize, usize, f64, Op
 //0 - preactval, 1 - outgoing weights, 2 - incoming weights, 3 - next layer size, 4 - prev layer size,
 //  5 - bias, 6 - biasDelta, 7 - errorDelta (during bp), 8 - post prime activation value
 trait NodeUtils {
-    fn get_nv_pairs(&self) -> Vec<(usize,(f64,f64))>;
+    fn activate_node(&self) -> (f64, f64);
     fn set_pav(&mut self, v: f64, t: ActivationType);
     fn get_pav(&self) -> PreActivationValue;
     fn get_outgoing_weights(&self) -> Vec<Weight>;
@@ -73,19 +72,12 @@ trait NodeUtils {
     fn get_pp_av(&self) -> Option<f64>;
 }
 impl NodeUtils for Node {
-    fn get_nv_pairs(&self)  -> Vec<(usize,(f64,f64))> {
-        let mut result: Vec<(usize,(f64,f64))> = vec![];
-
-        for i in 0..self.get_size_next_layer() { // size of next layer
-            if self.get_outgoing_weights()[i].is_some() {
-                let post_act_val = &self.get_pav().activate();
-                match post_act_val {
-                    None => {},
-                    Some(x) => {result.push((i,*x))},
-                }
-            }
+    fn activate_node(&self) -> (f64, f64) {
+        let post_act_val = &self.get_pav().activate_pav();
+        match post_act_val {
+            None => {panic!()},
+            Some(x) => {return *x;},
         }
-        result
     }
     fn set_pav(&mut self, v: f64, t: ActivationType) {
         self.0.0 = v;
@@ -137,26 +129,20 @@ impl NodeUtils for Node {
 
 
         //get nv pairs (ind_of_node_to, (post_act, post_prime_act)) and weights
-        let pairs: Vec<(usize,(f64,f64))> = self.get_nv_pairs();
+        let pair: (f64, f64) = self.activate_node();
         let weights = self.get_outgoing_weights();
 
-        //sanity check that network is fully connected (n pairs == n weights)
-        if pairs.len() != weights.len() {
-            println!("{:?}","NUM WEIGHTS DIFFERENT FROM NUM PAIRS");
-            return vec![];
-        }
-
         //for first one, update node to have post_act and post prime act
-        for i in 0..pairs.len() {
+        for i in 0..weights.len() {
             match weights[i] {
                 None => {
                     println!("{:?}","NONE WEIGHT VALUE REFERENCED");
                     return vec![];
                 }
                 Some(x) => {
-                    let v = pairs[i].1.0 * x;
+                    let v = pair.0 * x;
                     add_to_next_layer_pav.push(v);
-                    self.set_pp_av(pairs[i].1.1);
+                    self.set_pp_av(pair.1);
                 }
             }
         }
