@@ -48,7 +48,7 @@ impl PAVUtils for PreActivationValue {
     }
 }
 
-type Node = (PreActivationValue, Vec<Weight>, Vec<Weight>, usize, usize, f64, Option<f64>, Option<f64>, Option<f64>); // last 2 next and prev layer sizes + bias
+type Node = (PreActivationValue, Vec<Weight>, Vec<Weight>, usize, usize, f64, Option<f64>, Option<f64>, Option<f64>);
 //0 - preactval, 1 - outgoing weights, 2 - incoming weights, 3 - next layer size, 4 - prev layer size,
 //  5 - bias, 6 - biasDelta, 7 - errorDelta (during bp), 8 - post prime activation value
 trait NodeUtils {
@@ -288,7 +288,8 @@ impl NetworkUtils for Network {
             let mut add_sums: Vec<f64> = vec![0.0f64; num_nodes_next_layer];
 
             for node_ind in 0..self.get_layers()[layer_ind].get_nodes().len() {
-                let node_outs = self.get_layers()[layer_ind].get_nodes()[node_ind].forward();
+                //can't use get_layers or get_nodes here since the copy won't keep pp_av
+                let node_outs = self.0[layer_ind].0[node_ind].forward();
                 if node_ind == 0 {
                     add_sums = node_outs;
                 }
@@ -305,6 +306,10 @@ impl NetworkUtils for Network {
 
             if layer_ind == self.get_layers().len()-2 {
                 self.set_layer_values(layer_ind+1,add_sums.clone(),self.get_output_act_type());
+                for i in 0..num_nodes_next_layer {
+                    //set output layer post prime activation values to 1 (since they always are)
+                    self.0[layer_ind+1].0[i].set_pp_av(1f64);
+                }
                 return add_sums.iter().map(|x| x.powi(2)).collect();
             }
             else {
@@ -428,6 +433,12 @@ fn main() {
     network.set_layer_values(0, example_input_values, ActivationType::Linear);
 
     println!("{:?}",network.forward_pass());
+
+    for l in network.get_layers() {
+        for n in l.get_nodes() {
+            println!("{:?}",n.8);
+        }
+    }
 }
 
 
