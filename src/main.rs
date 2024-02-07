@@ -3,6 +3,31 @@ use std::fs;
 use std::str::FromStr;
 use rand::random;
 
+fn activate_sigmoid(val: f64) -> Option<(f64,f64)>{
+    let post_activation = 1.0 / (1.0 + consts::E.powf(-val));
+    let post_prime_activation = consts::E.powf(val)
+        / (1.0 + consts::E.powf(val)).powf(2.0);
+    Option::Some((post_activation,post_prime_activation))
+}
+fn activate_tanh(val: f64) -> Option<(f64,f64)>{
+    let post_activation = val.tanh();
+    let post_prime_activation = 1f64 - val.tanh().powi(2);
+    Option::Some((post_activation,post_prime_activation))
+}
+fn activate_linear(val: f64) -> Option<(f64,f64)>{
+    Option::Some((val,1.0))
+}
+fn activate_squared(val: f64) -> Option<(f64,f64)>{
+    let post_activation = val.powi(2);
+    let post_prime_activation = 2f64 * val;
+    Option::Some((post_activation,post_prime_activation))
+}
+fn activate_cubed(val: f64) -> Option<(f64,f64)>{
+    let post_activation = val.powi(3);
+    let post_prime_activation = 3f64 * val.powi(2);
+    Option::Some((post_activation,post_prime_activation))
+}
+
 #[derive(Copy, Clone, PartialEq, Debug)]
 enum ActivationType {
     Sigmoid,
@@ -21,28 +46,19 @@ impl PAVUtils for PreActivationValue {
     fn activate_pav(&self) -> Option<(f64, f64)> {
         match self.1.clone() {
             ActivationType::Sigmoid => {
-                let post_activation = 1.0 / (1.0 + consts::E.powf(-self.0));
-                let post_prime_activation = consts::E.powf(self.0)
-                    / (1.0 + consts::E.powf(self.0)).powf(2.0);
-                Option::Some((post_activation,post_prime_activation))
+                activate_sigmoid(self.0)
             }
             ActivationType::TanH => {
-                let post_activation = self.0.tanh();
-                let post_prime_activation = 1f64 - self.0.tanh().powi(2);
-                Option::Some((post_activation,post_prime_activation))
+                activate_tanh(self.0)
             }
             ActivationType::Linear => {
-                Option::Some((self.0,1.0))
+                activate_linear(self.0)
             }
             ActivationType::Squared => {
-                let post_activation = self.0.powi(2);
-                let post_prime_activation = 2f64 * self.0;
-                Option::Some((post_activation,post_prime_activation))
+                activate_squared(self.0)
             }
             ActivationType::Cubed => {
-                let post_activation = self.0.powi(3);
-                let post_prime_activation = 3f64 * self.0.powi(2);
-                Option::Some((post_activation,post_prime_activation))
+                activate_cubed(self.0)
             }
         }
     }
@@ -307,10 +323,16 @@ impl NetworkUtils for Network {
             if layer_ind == self.get_layers().len()-2 {
                 self.set_layer_values(layer_ind+1,add_sums.clone(),self.get_output_act_type());
                 for i in 0..num_nodes_next_layer {
-                    //set output layer post prime activation values to 1 (since they always are)
-                    self.0[layer_ind+1].0[i].set_pp_av(1f64);
+                    let pp_av = self.0[layer_ind+1].0[i].0.activate_pav().unwrap().1;
+                    self.0[layer_ind+1].0[i].set_pp_av(pp_av);
                 }
-                return add_sums.iter().map(|x| x.powi(2)).collect();
+                return match self.get_output_act_type() {
+                    ActivationType::Sigmoid => { add_sums.iter().map(|x| activate_sigmoid(*x).unwrap().0).collect() }
+                    ActivationType::TanH => { add_sums.iter().map(|x| activate_tanh(*x).unwrap().0).collect() }
+                    ActivationType::Linear => { add_sums.iter().map(|x| activate_linear(*x).unwrap().0).collect() }
+                    ActivationType::Squared => { add_sums.iter().map(|x| activate_squared(*x).unwrap().0).collect() }
+                    ActivationType::Cubed => { add_sums.iter().map(|x| activate_cubed(*x).unwrap().0).collect() }
+                }
             }
             else {
                 self.set_layer_values(layer_ind+1,add_sums,self.get_hidden_act_type());
