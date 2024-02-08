@@ -64,13 +64,15 @@ impl PAVUtils for PreActivationValue {
     }
 }
 
-type Node = (PreActivationValue, Vec<Weight>, Vec<Weight>, usize, usize, f64, Option<f64>, Option<f64>, Option<f64>);
+type Node = (PreActivationValue, Vec<Weight>, Vec<Weight>, usize, usize, f64, Option<f64>, Option<f64>, Option<f64>, Option<f64>);
 //0 - preactval, 1 - outgoing weights, 2 - incoming weights, 3 - next layer size, 4 - prev layer size,
-//  5 - bias, 6 - biasDelta, 7 - errorDelta (during bp), 8 - post prime activation value
+//  5 - bias, 6 - biasDelta, 7 - errorDelta (during bp), 8 - post prime activation value, 9 - post activation value
 trait NodeUtils {
     fn activate_node(&self) -> (f64, f64);
     fn set_pav(&mut self, v: f64, t: ActivationType);
     fn get_pav(&self) -> PreActivationValue;
+    fn set_post_act_val(&mut self, v: f64);
+    fn get_post_act_val(&self) -> Option<f64>;
     fn get_outgoing_weights(&self) -> Vec<Weight>;
     fn set_outgoing_weights(&mut self, weights: Vec<Weight>);
     fn get_incoming_weights(&self) -> Vec<Weight>;
@@ -86,6 +88,7 @@ trait NodeUtils {
     fn forward(&mut self) -> Vec<f64>;
     fn set_pp_av(&mut self, v: f64);
     fn get_pp_av(&self) -> Option<f64>;
+    //fn propagate_backwards(&self);
 }
 impl NodeUtils for Node {
     fn activate_node(&self) -> (f64, f64) {
@@ -102,6 +105,13 @@ impl NodeUtils for Node {
     fn get_pav(&self) -> PreActivationValue {
         self.0
     }
+    fn set_post_act_val(&mut self, v: f64) {
+        self.9 = Option::Some(v);
+    }
+    fn get_post_act_val(&self) -> Option<f64> {
+        self.9
+    }
+
     fn get_outgoing_weights(&self) -> Vec<Weight> {
         self.1.clone()
     }
@@ -144,13 +154,16 @@ impl NodeUtils for Node {
         let mut add_to_next_layer_pav: Vec<f64> = vec![];
 
 
-        //get nv pairs (ind_of_node_to, (post_act, post_prime_act)) and weights
+        //pairs (post_act, post_prime_act) and weights
         let pair: (f64, f64) = self.activate_node();
         let weights = self.get_outgoing_weights();
 
+        self.set_pp_av(pair.1);
+        self.set_post_act_val(pair.0);
+
         //for first one, update node to have post_act and post prime act
         for i in 0..weights.len() {
-            match weights[i] {
+            match weights[i].0 {
                 None => {
                     println!("{:?}","NONE WEIGHT VALUE REFERENCED");
                     return vec![];
@@ -158,7 +171,6 @@ impl NodeUtils for Node {
                 Some(x) => {
                     let v = pair.0 * x;
                     add_to_next_layer_pav.push(v);
-                    self.set_pp_av(pair.1);
                 }
             }
         }
@@ -172,6 +184,8 @@ impl NodeUtils for Node {
     fn get_pp_av(&self) -> Option<f64> {
         self.8
     }
+
+   //fn propagate_backwards(&self) {}
 }
 
 type Layer = (Vec<Node>, usize);
@@ -194,7 +208,7 @@ impl LayerUtils for Layer {
 
 }
 
-type Weight = Option<f64>;
+type Weight = (Option<f64>,Option<f64>);
 
 trait WeightUtils {
     fn make(v: f64) -> Weight;
@@ -202,13 +216,14 @@ trait WeightUtils {
 impl WeightUtils for Weight {
     fn make(v: f64) -> Weight {
         if v > 0f64 {
-            return Option::Some(v);
+            return (Option::Some(v),Option::None);
         }
-        Option::None
+        (Option::None,Option::None)
     }
 }
 
 type Network = (Vec<Layer>,Vec<usize>,Vec<ActivationType>);
+//BTW the layer size array is NOT being set correctly
 
 trait NetworkUtils {
     fn start_network(input_layer_size: usize, act_types: Vec<ActivationType>) -> Network;
@@ -216,6 +231,7 @@ trait NetworkUtils {
     fn add_output_layer(&mut self, l_chunk: (Vec<Vec<Weight>>, Vec<f64>));
     fn get_layers(&self) -> Vec<Layer>;
     fn forward_pass(&mut self) -> Vec<f64>;
+    fn backward_pass(&mut self);
     fn set_layer_values(&mut self, layer_ind: usize, values: Vec<f64>, activation_type: ActivationType);
     fn get_input_act_type(&self) -> ActivationType;
     fn get_hidden_act_type(&self) -> ActivationType;
@@ -225,7 +241,7 @@ impl NetworkUtils for Network {
     fn start_network(input_layer_size: usize, act_types: Vec<ActivationType>) -> Network {
         let mut input_nodes: Vec<Node> = vec![];
         for _ in 0..input_layer_size {
-            input_nodes.push(((0.0f64, ActivationType::Linear), vec![], vec![], 0, 0, 0f64, Option::None, Option::None, Option::None));
+            input_nodes.push(((0.0f64, ActivationType::Linear), vec![], vec![], 0, 0, 0f64, Option::None, Option::None, Option::None, Option::None));
         }
         let input_layer: Layer = (input_nodes, input_layer_size);
         let network: Network = (vec![input_layer], vec![input_layer_size], act_types);
@@ -254,6 +270,7 @@ impl NetworkUtils for Network {
                 weights_1[0].len(),
                 weights_0.len(),
                 biases[i],
+                Option::None,
                 Option::None,
                 Option::None,
                 Option::None
@@ -285,6 +302,7 @@ impl NetworkUtils for Network {
                 0,
                 weights[0].len(),
                 biases[i],
+                Option::None,
                 Option::None,
                 Option::None,
                 Option::None
@@ -323,8 +341,13 @@ impl NetworkUtils for Network {
             if layer_ind == self.get_layers().len()-2 {
                 self.set_layer_values(layer_ind+1,add_sums.clone(),self.get_output_act_type());
                 for i in 0..num_nodes_next_layer {
-                    let pp_av = self.0[layer_ind+1].0[i].0.activate_pav().unwrap().1;
+                    let activated = self.0[layer_ind+1].0[i].0.activate_pav().unwrap();
+                    let pp_av = activated.1;
+                    let post_act_val = activated.0;
+                    self.0[layer_ind+1].0[i].set_post_act_val(post_act_val);
                     self.0[layer_ind+1].0[i].set_pp_av(pp_av);
+                    //the error_delta is the pp_av since the default 1 is propogated by multiplying through the pp_av
+                    self.0[layer_ind+1].0[i].set_error_delta(pp_av);
                 }
                 return match self.get_output_act_type() {
                     ActivationType::Sigmoid => { add_sums.iter().map(|x| activate_sigmoid(*x).unwrap().0).collect() }
@@ -339,6 +362,66 @@ impl NetworkUtils for Network {
             }
         }
         vec![]
+    }
+
+    fn backward_pass(&mut self) {
+        for layer_ind in (0..self.get_layers().len()).rev() {
+            println!("{:?}",layer_ind);
+            for node_ind in (0..self.get_layers()[layer_ind].get_nodes().len()).rev() {
+                println!("{:?}",(layer_ind,node_ind));
+                //starting, the assumptions are:
+                //  will be initially called on the output nodes
+                //  those nodes will already have their error_delta set from the end of the forward pass
+                //  all nodes have their pp_av already calculated
+
+                //for output node:
+                //  set error_delta (before pp_av adjustment) for incoming nodes and weights of those connections
+
+                //for hidden node:
+                //  adjust error_delta by multiplying current error_delta by the current pp_av
+                //  propogate back that new error_delta to the bias_delta, and for all incoming connections
+                //      the weight_delta, and the node's error_delta
+
+                //if this is an output node
+                if self.get_layers()[layer_ind].get_nodes()[node_ind].get_outgoing_weights().len() == 0 {
+                    println!("output layer");
+                    let node_clone = self.get_layers()[layer_ind].get_nodes()[node_ind].clone();
+                    let node_delta = node_clone.get_error_delta().unwrap();
+                    for i in 0..node_clone.get_incoming_weights().len() {
+                        let incoming_node_post_act_val = self.get_layers()[layer_ind-1].get_nodes()[i].get_post_act_val().unwrap();
+                        let connection_weight = node_clone.get_incoming_weights()[i].0.unwrap();
+                        //updating error delta
+                        self.0[layer_ind-1].0[i].set_error_delta(node_delta * connection_weight);
+                        // .1 is outgoing weights, no get_outgoing_weights since thats a clone operation
+                        self.0[layer_ind-1].0[i].1[node_ind].1 = Option::Some(incoming_node_post_act_val * node_delta);
+                        //  .2 is incoming weights
+                        self.0[layer_ind].0[node_ind].2[i].1 = Option::Some(incoming_node_post_act_val * node_delta);
+                    }
+                }
+                else if self.get_layers()[layer_ind].get_nodes()[node_ind].get_incoming_weights().len() != 0 {
+                    println!("hidden layer");
+                    let current_error_delta = self.0[layer_ind].0[node_ind].get_error_delta().unwrap();
+                    let current_pp_av = self.0[layer_ind].0[node_ind].get_pp_av().unwrap();
+                    self.0[layer_ind].0[node_ind].set_error_delta(current_error_delta * current_pp_av);
+                    self.0[layer_ind].0[node_ind].set_bias_delta(current_error_delta * current_pp_av);
+
+                    let node_clone = self.get_layers()[layer_ind].get_nodes()[node_ind].clone();
+                    let node_delta = node_clone.get_error_delta().unwrap();
+                    for i in 0..node_clone.get_incoming_weights().len() {
+                        let incoming_node_post_act_val = self.get_layers()[layer_ind-1].get_nodes()[i].get_post_act_val().unwrap();
+                        let connection_weight = node_clone.get_incoming_weights()[i].0.unwrap();
+                        self.0[layer_ind-1].0[i].set_error_delta(node_delta * connection_weight);
+                        // .1 is outgoing weights, no get_outgoing_weights since thats a clone operation
+                        self.0[layer_ind-1].0[i].1[node_ind].1 = Option::Some(incoming_node_post_act_val * node_delta);
+                        //  .2 is incoming weights
+                        self.0[layer_ind].0[node_ind].2[i].1 = Option::Some(incoming_node_post_act_val * node_delta);
+                    }
+                }
+                else {
+                    println!("inp layer");
+                }
+            }
+        }
     }
 
     fn set_layer_values(&mut self, layer_ind: usize, values: Vec<f64>, activation_type: ActivationType) {
@@ -402,7 +485,7 @@ fn build_network_from_txt_file(txt_file_name: &str) -> Network {
                 let inner_split = e.split(",").collect::<Vec<&str>>();
                 let mut w_block_loop: Vec<Weight> = vec![];
                 for w in inner_split {
-                    w_block_loop.push(Option::Some(w.parse::<f64>().unwrap()));
+                    w_block_loop.push((Option::Some(w.parse::<f64>().unwrap()),Option::None));
                 }
                 w_block_builder.push(w_block_loop);
             }
@@ -455,12 +538,23 @@ fn main() {
     network.set_layer_values(0, example_input_values, ActivationType::Linear);
 
     println!("{:?}",network.forward_pass());
+    network.backward_pass();
 
     for l in network.get_layers() {
         for n in l.get_nodes() {
-            println!("{:?}",n.8);
+            println!("outgoing weight deltas:");
+            for i in n.1.clone() {
+                println!("{:?}",i.1);
+            }
+            println!("incoming weight deltas");
+            for i in n.2.clone() {
+                println!("{:?}",i.1);
+            }
+            println!();
         }
+        println!("-----------------");
     }
+
 }
 
 
