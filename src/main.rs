@@ -1,7 +1,8 @@
+use std::collections::hash_map::Entry::Occupied;
 use std::f64::consts;
 use std::fs;
 use std::str::FromStr;
-use rand::random;
+use rand::{random, Rng};
 
 fn activate_sigmoid(val: f64) -> Option<(f64,f64)>{
     let post_activation = 1.0 / (1.0 + consts::E.powf(-val));
@@ -249,6 +250,8 @@ trait NetworkUtils {
     fn get_output_act_type(&self) -> ActivationType;
     fn update_weights(&mut self, loss: f64, learning_rate: f64);
     fn train(&mut self, data: Vec<(Vec<f64>,Vec<f64>)>, loss_type: LossType, learning_rate: f64);
+    fn reset_deltas(&mut self);
+    fn reset_values(&mut self);
 }
 impl NetworkUtils for Network {
     fn start_network(input_layer_size: usize, act_types: Vec<ActivationType>) -> Network {
@@ -385,10 +388,6 @@ impl NetworkUtils for Network {
                 //  those nodes will already have their error_delta set from the end of the forward pass
                 //  all nodes have their pp_av already calculated
 
-
-
-
-
                 //for output node:
                 //  set pre-adjusted error_delta for incoming nodes and weights of those connections
                 if self.get_layers()[layer_ind].get_nodes()[node_ind].get_outgoing_weights().len() == 0 {
@@ -462,37 +461,68 @@ impl NetworkUtils for Network {
 
                 for out_edge_index in 0..node_clone.get_outgoing_weights().len() {
                     if node_clone.get_outgoing_weights()[out_edge_index].1.is_some() {
-                        let t = self.0[layer_index].0[node_index].1[out_edge_index].0.unwrap() + (self.0[layer_index].0[node_index].1[out_edge_index].1.unwrap()  * loss * learning_rate);
+                        let t = self.0[layer_index].0[node_index].1[out_edge_index].0.unwrap() + (self.0[layer_index].0[node_index].1[out_edge_index].1.unwrap() * learning_rate);
                         //println!("Updating in_edge by: {:?}",t);
-                        self.0[layer_index].0[node_index].1[out_edge_index].0 = Option::Some(self.0[layer_index].0[node_index].1[out_edge_index].0.unwrap() + (self.0[layer_index].0[node_index].1[out_edge_index].1.unwrap()  * loss * learning_rate));
+                        self.0[layer_index].0[node_index].1[out_edge_index].0 = Option::Some(self.0[layer_index].0[node_index].1[out_edge_index].0.unwrap() - (self.0[layer_index].0[node_index].1[out_edge_index].1.unwrap() * learning_rate));
                     }
                 }
                 for in_edge_index in 0..node_clone.get_incoming_weights().len() {
                     if node_clone.get_incoming_weights()[in_edge_index].1.is_some() {
-                        let t = self.0[layer_index].0[node_index].2[in_edge_index].0.unwrap() + (self.0[layer_index].0[node_index].2[in_edge_index].1.unwrap()  * loss * learning_rate);
+                        let t = self.0[layer_index].0[node_index].2[in_edge_index].0.unwrap() + (self.0[layer_index].0[node_index].2[in_edge_index].1.unwrap() * learning_rate);
                         //println!("Updating in_edge by: {:?}",t);
-                        self.0[layer_index].0[node_index].2[in_edge_index].0 = Option::Some(self.0[layer_index].0[node_index].2[in_edge_index].0.unwrap() + (self.0[layer_index].0[node_index].2[in_edge_index].1.unwrap()  * loss * learning_rate));
+                        self.0[layer_index].0[node_index].2[in_edge_index].0 = Option::Some(self.0[layer_index].0[node_index].2[in_edge_index].0.unwrap() - (self.0[layer_index].0[node_index].2[in_edge_index].1.unwrap() * learning_rate));
                     }
                 }
                 if self.get_layers()[layer_index].get_nodes()[node_index].get_bias_delta().is_some() {
                     let prev_bias = self.0[layer_index].0[node_index].get_bias();
                     let bias_delta = self.0[layer_index].0[node_index].get_bias_delta().unwrap();
-                    self.0[layer_index].0[node_index].set_bias(prev_bias + (loss * learning_rate * bias_delta));
+                    self.0[layer_index].0[node_index].set_bias(prev_bias - (learning_rate * bias_delta));
                 }
             }
         }
     }
 
     fn train(&mut self, data: Vec<(Vec<f64>,Vec<f64>)>, loss_type: LossType, learning_rate: f64) {
+        let mut total_error_this_train = 0f64;
         for i in 0..data.len() {
             let x = &data[i].1;
             let y = &data[i].0;
+            self.reset_deltas();
+            self.reset_values();
             self.set_layer_values(0, x.clone(), ActivationType::Linear);
-
             let fp_result = self.forward_pass();
             let loss = calculate_loss(fp_result, y.clone(), loss_type);
+            total_error_this_train += &loss;
             self.backward_pass();
             self.update_weights(loss, learning_rate);
+        }
+
+
+        println!("{:?}",&total_error_this_train);
+    }
+
+    fn reset_deltas(&mut self) {
+        for layer_ind in 0..self.get_layers().len() {
+            for node_ind in 0..self.get_layers()[layer_ind].get_nodes().len() {
+                self.0[layer_ind].0[node_ind].set_bias_delta(0f64);
+                self.0[layer_ind].0[node_ind].set_error_delta(0f64);
+                for i in 0..self.get_layers()[layer_ind].get_nodes()[node_ind].get_outgoing_weights().len() {
+                    self.0[layer_ind].0[node_ind].1[i].1 = Option::None;
+                }
+                for i in 0..self.get_layers()[layer_ind].get_nodes()[node_ind].get_incoming_weights().len() {
+                    self.0[layer_ind].0[node_ind].2[i].1 = Option::None;
+                }
+            }
+        }
+    }
+
+    fn reset_values(&mut self) {
+        for layer_ind in 0..self.get_layers().len() {
+            for node_ind in 0..self.get_layers()[layer_ind].get_nodes().len() {
+                self.0[layer_ind].0[node_ind].0.0 = 0f64;
+                self.0[layer_ind].0[node_ind].8 = Option::None;
+                self.0[layer_ind].0[node_ind].9 = Option::None;
+            }
         }
     }
 }
@@ -504,9 +534,10 @@ fn calculate_loss(results: Vec<f64>, intended_results: Vec<f64>, loss_type: Loss
             let num_elements = results.len();
 
             for i in 0..num_elements {
+                //println!("res: {:?}, int_res: {:?}", results[i], intended_results[i]);
                 total_error += (results[i] - intended_results[i]).powi(2);
             }
-            total_error /= num_elements as f64;
+            total_error = total_error / num_elements as f64;
             println!("total error test: {:?}",&total_error);
             total_error
         }
@@ -599,6 +630,15 @@ fn build_network_from_txt_file(txt_file_name: &str) -> Network {
     layers
 }
 
+fn sample(from: Vec<(Vec<f64>,Vec<f64>)>, number: usize) -> Vec<(Vec<f64>,Vec<f64>)>{
+    let mut result = vec![];
+    for i in 0..number {
+        let choice = rand::thread_rng().gen_range(0..from.len());
+        result.push(from[choice].clone());
+    }
+    result
+}
+
 
 fn main() {
     let file: &str = "src/test_network_xor.txt";
@@ -626,14 +666,23 @@ fn main() {
         (vec![0f64],vec![1f64,1f64])
     ];
 
-    let lr = 0.05f64;
+    let lr = 0.005f64;
 
-    println!("{:?}",&network);
-    network.train(xor_train.clone(), LossType::MeanSquareError, lr);
-    println!("{:?}",&network);
 
+
+    for i in 0..10000 {
+        //let data: Vec<(Vec<f64>,Vec<f64>)> = sample(xor_train.clone(),4);
+        network.train(xor_train.clone(), LossType::MeanSquareError, lr);
+        //println!("{:?}",&network);
+    }
+
+    network.set_layer_values(0,vec![1f64,0f64],ActivationType::Linear);
+    println!("{:?}",network.forward_pass());
+    println!("{:?}",network);
 
     // I think mostly working so far, need to remember to add a reset to clear the delta values between each training step!
+
+    //JUST REMOVED LOSS SCALING ON WEIGHT UPDATING, I DK IF IT WAS GOOD OR NOT
 }
 
 
