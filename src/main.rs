@@ -37,6 +37,12 @@ enum ActivationType {
     Cubed,
 }
 
+#[derive(Copy, Clone, PartialEq, Debug)]
+enum LossType {
+    MeanSquareError,
+    MeanAbsoluteError,
+}
+
 type PreActivationValue = (f64,ActivationType);
 
 trait PAVUtils {
@@ -81,6 +87,7 @@ trait NodeUtils {
     fn set_size_next_layer(&mut self, size: usize);
     fn get_size_prev_layer(&self) -> usize;
     fn get_bias(&self) -> f64;
+    fn set_bias(&mut self, val: f64);
     fn get_bias_delta(&self) -> Option<f64>;
     fn get_error_delta(&self) -> Option<f64>;
     fn set_error_delta(&mut self, val: f64);
@@ -136,6 +143,10 @@ impl NodeUtils for Node {
     fn get_bias(&self) -> f64 {
         self.5
     }
+    fn set_bias(&mut self, val: f64) {
+        self.5 = val;
+    }
+
     fn get_bias_delta(&self) -> Option<f64> {
         return self.6;
     }
@@ -236,6 +247,8 @@ trait NetworkUtils {
     fn get_input_act_type(&self) -> ActivationType;
     fn get_hidden_act_type(&self) -> ActivationType;
     fn get_output_act_type(&self) -> ActivationType;
+    fn update_weights(&mut self, loss: f64, learning_rate: f64);
+    fn train(&mut self, data: Vec<(Vec<f64>,Vec<f64>)>, loss_type: LossType, learning_rate: f64);
 }
 impl NetworkUtils for Network {
     fn start_network(input_layer_size: usize, act_types: Vec<ActivationType>) -> Network {
@@ -315,7 +328,6 @@ impl NetworkUtils for Network {
     fn get_layers(&self) -> Vec<Layer> {
         self.0.clone()
     }
-
     fn forward_pass(&mut self) -> Vec<f64> {
         for layer_ind in 0..(self.get_layers().len()-1) {
             let num_nodes_next_layer = self.get_layers()[layer_ind+1].get_nodes().len();
@@ -363,7 +375,6 @@ impl NetworkUtils for Network {
         }
         vec![]
     }
-
     fn backward_pass(&mut self) {
         for layer_ind in (0..self.get_layers().len()).rev() {
             //println!("{:?}",layer_ind);
@@ -424,7 +435,6 @@ impl NetworkUtils for Network {
             }
         }
     }
-
     fn set_layer_values(&mut self, layer_ind: usize, values: Vec<f64>, activation_type: ActivationType) {
         for i in 0..values.len() {
             //Can't use get_layers and get_nodes for SETTING values since they use clone!!!!!!!!!!!!!!!!!!
@@ -435,7 +445,6 @@ impl NetworkUtils for Network {
             self.0[layer_ind].0[i].set_pav(values[i], activation_type);
         }
     }
-
     fn get_input_act_type(&self) -> ActivationType {
         self.2[0]
     }
@@ -444,6 +453,66 @@ impl NetworkUtils for Network {
     }
     fn get_output_act_type(&self) -> ActivationType {
         self.2[2]
+    }
+    fn update_weights(&mut self, loss: f64, learning_rate: f64) {
+        for layer_index in 0..self.get_layers().len() {
+            let layer_clone = self.get_layers()[layer_index].clone();
+            for node_index in 0..layer_clone.get_nodes().len() {
+                let node_clone: Node = layer_clone.0[node_index].clone();
+
+                for out_edge_index in 0..node_clone.get_outgoing_weights().len() {
+                    if node_clone.get_outgoing_weights()[out_edge_index].1.is_some() {
+                        let t = self.0[layer_index].0[node_index].1[out_edge_index].0.unwrap() + (self.0[layer_index].0[node_index].1[out_edge_index].1.unwrap()  * loss * learning_rate);
+                        //println!("Updating in_edge by: {:?}",t);
+                        self.0[layer_index].0[node_index].1[out_edge_index].0 = Option::Some(self.0[layer_index].0[node_index].1[out_edge_index].0.unwrap() + (self.0[layer_index].0[node_index].1[out_edge_index].1.unwrap()  * loss * learning_rate));
+                    }
+                }
+                for in_edge_index in 0..node_clone.get_incoming_weights().len() {
+                    if node_clone.get_incoming_weights()[in_edge_index].1.is_some() {
+                        let t = self.0[layer_index].0[node_index].2[in_edge_index].0.unwrap() + (self.0[layer_index].0[node_index].2[in_edge_index].1.unwrap()  * loss * learning_rate);
+                        //println!("Updating in_edge by: {:?}",t);
+                        self.0[layer_index].0[node_index].2[in_edge_index].0 = Option::Some(self.0[layer_index].0[node_index].2[in_edge_index].0.unwrap() + (self.0[layer_index].0[node_index].2[in_edge_index].1.unwrap()  * loss * learning_rate));
+                    }
+                }
+                if self.get_layers()[layer_index].get_nodes()[node_index].get_bias_delta().is_some() {
+                    let prev_bias = self.0[layer_index].0[node_index].get_bias();
+                    let bias_delta = self.0[layer_index].0[node_index].get_bias_delta().unwrap();
+                    self.0[layer_index].0[node_index].set_bias(prev_bias + (loss * learning_rate * bias_delta));
+                }
+            }
+        }
+    }
+
+    fn train(&mut self, data: Vec<(Vec<f64>,Vec<f64>)>, loss_type: LossType, learning_rate: f64) {
+        for i in 0..data.len() {
+            let x = &data[i].1;
+            let y = &data[i].0;
+            self.set_layer_values(0, x.clone(), ActivationType::Linear);
+
+            let fp_result = self.forward_pass();
+            let loss = calculate_loss(fp_result, y.clone(), loss_type);
+            self.backward_pass();
+            self.update_weights(loss, learning_rate);
+        }
+    }
+}
+
+fn calculate_loss(results: Vec<f64>, intended_results: Vec<f64>, loss_type: LossType) -> f64{
+    return match loss_type {
+        LossType::MeanSquareError => {
+            let mut total_error = 0f64;
+            let num_elements = results.len();
+
+            for i in 0..num_elements {
+                total_error += (results[i] - intended_results[i]).powi(2);
+            }
+            total_error /= num_elements as f64;
+            println!("total error test: {:?}",&total_error);
+            total_error
+        }
+        LossType::MeanAbsoluteError => {
+            panic!("Not yet implemented!");
+        }
     }
 }
 
@@ -512,7 +581,7 @@ fn build_network_from_txt_file(txt_file_name: &str) -> Network {
     let layer_sizes: Vec<usize> = layer_sizes; //not mut anymore
 
     // TEMP JUST ASSIGNING ACT TYPES HERE CHANGE SYNTAX TO HAVE IN TXT FILE AT SOME POINT!!!!!!!!!!!!!
-    let mut layers = Network::start_network(layer_sizes[0], vec![ActivationType::Linear,ActivationType::Cubed,ActivationType::Squared]);
+    let mut layers = Network::start_network(layer_sizes[0], vec![ActivationType::Linear,ActivationType::Sigmoid,ActivationType::TanH]);
     for i in 0..layer_sizes.len()-1 {
         if i == 0 {
             for node_ind in 0..layers.0[0].0.len() {
@@ -534,7 +603,7 @@ fn build_network_from_txt_file(txt_file_name: &str) -> Network {
 fn main() {
     let file: &str = "src/test_network_xor.txt";
     let mut network: Network = build_network_from_txt_file(file);
-
+    /*
     let example_input_values = vec![3.5f64,-1.5f64];
     network.set_layer_values(0, example_input_values, ActivationType::Linear);
 
@@ -549,16 +618,22 @@ fn main() {
         }
         println!("-----------------");
     }
-
-    let xor_train: Vec<(f64,(f64,f64))> = vec![
-        (0f64,(0f64,0f64)),
-        (1f64,(1f64,0f64)),
-        (1f64,(0f64,1f64)),
-        (0f64,(1f64,1f64))
+    */
+    let xor_train: Vec<(Vec<f64>,Vec<f64>)> = vec![
+        (vec![0f64],vec![0f64,0f64]),
+        (vec![1f64],vec![1f64,0f64]),
+        (vec![1f64],vec![0f64,1f64]),
+        (vec![0f64],vec![1f64,1f64])
     ];
 
-    
+    let lr = 0.05f64;
 
+    println!("{:?}",&network);
+    network.train(xor_train.clone(), LossType::MeanSquareError, lr);
+    println!("{:?}",&network);
+
+
+    // I think mostly working so far, need to remember to add a reset to clear the delta values between each training step!
 }
 
 
