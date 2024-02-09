@@ -366,25 +366,22 @@ impl NetworkUtils for Network {
 
     fn backward_pass(&mut self) {
         for layer_ind in (0..self.get_layers().len()).rev() {
-            println!("{:?}",layer_ind);
+            //println!("{:?}",layer_ind);
             for node_ind in (0..self.get_layers()[layer_ind].get_nodes().len()).rev() {
-                println!("{:?}",(layer_ind,node_ind));
+                //println!("{:?}",(layer_ind,node_ind));
                 //starting, the assumptions are:
                 //  will be initially called on the output nodes
                 //  those nodes will already have their error_delta set from the end of the forward pass
                 //  all nodes have their pp_av already calculated
 
+
+
+
+
                 //for output node:
-                //  set error_delta (before pp_av adjustment) for incoming nodes and weights of those connections
-
-                //for hidden node:
-                //  adjust error_delta by multiplying current error_delta by the current pp_av
-                //  propogate back that new error_delta to the bias_delta, and for all incoming connections
-                //      the weight_delta, and the node's error_delta
-
-                //if this is an output node
+                //  set pre-adjusted error_delta for incoming nodes and weights of those connections
                 if self.get_layers()[layer_ind].get_nodes()[node_ind].get_outgoing_weights().len() == 0 {
-                    println!("output layer");
+                    //println!("output layer");
                     let node_clone = self.get_layers()[layer_ind].get_nodes()[node_ind].clone();
                     let node_delta = node_clone.get_error_delta().unwrap();
                     for i in 0..node_clone.get_incoming_weights().len() {
@@ -398,8 +395,12 @@ impl NetworkUtils for Network {
                         self.0[layer_ind].0[node_ind].2[i].1 = Option::Some(incoming_node_post_act_val * node_delta);
                     }
                 }
+                //for hidden node:
+                //  adjust error_delta by multiplying current error_delta by the current pp_av
+                //  propagate back that new error_delta to the bias_delta,
+                //      and for each incoming connection: the weight_delta, and the node's error_delta
                 else if self.get_layers()[layer_ind].get_nodes()[node_ind].get_incoming_weights().len() != 0 {
-                    println!("hidden layer");
+                    //println!("hidden layer");
                     let current_error_delta = self.0[layer_ind].0[node_ind].get_error_delta().unwrap();
                     let current_pp_av = self.0[layer_ind].0[node_ind].get_pp_av().unwrap();
                     self.0[layer_ind].0[node_ind].set_error_delta(current_error_delta * current_pp_av);
@@ -418,7 +419,7 @@ impl NetworkUtils for Network {
                     }
                 }
                 else {
-                    println!("inp layer");
+                    //println!("inp layer");
                 }
             }
         }
@@ -540,20 +541,23 @@ fn main() {
     println!("{:?}",network.forward_pass());
     network.backward_pass();
 
+    println!("-----------------");
     for l in network.get_layers() {
         for n in l.get_nodes() {
-            println!("outgoing weight deltas:");
-            for i in n.1.clone() {
-                println!("{:?}",i.1);
-            }
-            println!("incoming weight deltas");
-            for i in n.2.clone() {
-                println!("{:?}",i.1);
-            }
+            println!("{:?}",&n);
             println!();
         }
         println!("-----------------");
     }
+
+    let xor_train: Vec<(f64,(f64,f64))> = vec![
+        (0f64,(0f64,0f64)),
+        (1f64,(1f64,0f64)),
+        (1f64,(0f64,1f64)),
+        (0f64,(1f64,1f64))
+    ];
+
+    
 
 }
 
